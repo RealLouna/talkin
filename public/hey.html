@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Discussion - Talkin'</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="sidebar">
+        <button id="themeToggle">Mode Sombre</button>
+        <div class="room-list">
+            <h3>Salons de Discussion</h3>
+            <select id="rooms" onchange="joinRoom(this.value)">
+                <option value="General">General</option>
+            </select>
+            <input type="text" id="newRoomName" placeholder="Nom du nouveau salon">
+            <button id="createRoomButton">Créer un Salon</button>
+        </div>
+        <div class="action-buttons">
+            <button id="gifButton">GIF</button>
+            <input type="text" id="gifSearch" placeholder="Recherchez un GIF" style="display:none;">
+            <button id="emojiButton">😊</button>
+            <div id="emojiContainer" style="display:none;">
+                <!-- Émojis seront affichés ici -->
+            </div>
+            <button id="recordButton">🎤</button>
+            <button id="imageButton">📷</button>
+            <input type="file" id="imageInput" style="display:none;">
+            <input type="text" id="privateMessageUser" placeholder="Nom d'utilisateur pour message privé">
+            <button id="privateMessageButton">Envoyer un message privé</button>
+        </div>
+    </div>
+    <div class="chat-container">
+        <ul id="messages"></ul>
+        <form id="form">
+            <input id="input" autocomplete="off" placeholder="Message...">
+            <button type="submit">Envoyer</button>
+        </form>
+        <div class="user-settings">
+            <input type="color" id="colorPicker" title="Couleur">
+            <button id="profileButton">👤</button>
+            <input type="file" id="profileInput" style="display:none;">
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io();
+        var form = document.getElementById('form');
+        var input = document.getElementById('input');
+        var imageInput = document.getElementById('imageInput');
+        var imageButton = document.getElementById('imageButton');
+        var emojiButton = document.getElementById('emojiButton');
+        var emojiContainer = document.getElementById('emojiContainer');
+        var recordButton = document.getElementById('recordButton');
+        var profileButton = document.getElementById('profileButton');
+        var profileInput = document.getElementById('profileInput');
+        var colorPicker = document.getElementById('colorPicker');
+        var themeToggle = document.getElementById('themeToggle');
+        var gifButton = document.getElementById('gifButton');
+        var gifSearch = document.getElementById('gifSearch');
+        var rooms = document.getElementById('rooms');
+        var newRoomName = document.getElementById('newRoomName');
+        var createRoomButton = document.getElementById('createRoomButton');
+        var currentRoom = "hey"; // Salon par défaut
+        var privateMessageUser = document.getElementById('privateMessageUser');
+        var privateMessageButton = document.getElementById('privateMessageButton');
+
+        // Récupérer le nom d'utilisateur et d'autres paramètres depuis localStorage
+        var user = localStorage.getItem('username') || "Anonyme";
+        var emoji = localStorage.getItem('profileEmoji') || '🙂';
+        var color = localStorage.getItem('userColor') || '#000000';
+
+        // Fonction pour rejoindre un salon
+        function joinRoom(room) {
+            currentRoom = room;
+            document.getElementById('messages').innerHTML = '';
+            socket.emit('joinRoom', room);
+        }
+
+        // Charger les messages initiaux
+        socket.on('loadMessages', function(messages) {
+            messages.forEach(function(message) {
+                if (message.room === currentRoom) {
+                    var item = document.createElement('li');
+                    item.innerHTML = `<span style="color: ${message.color};">${message.user} ${message.emoji}</span> : ${message.text}`;
+                    document.getElementById('messages').appendChild(item);
+                }
+            });
+        });
+
+        // Charger les salons initiaux
+        socket.on('loadRooms', function(roomList) {
+            roomList.forEach(function(room) {
+                var option = document.createElement('option');
+                option.value = room;
+                option.textContent = room;
+                rooms.appendChild(option);
+            });
+        });
+
+createRoomButton.addEventListener('click', function() {
+    var roomName = newRoomName.value.trim();
+    if (roomName) {
+        socket.emit('createRoom', roomName, function(success) {
+            if (success) {
+                newRoomName.value = '';
+            } else {
+                alert("Le salon existe déjà !");
+            }
+        });
+    }
+});
+
+socket.on('roomCreated', function(room) {
+    var option = document.createElement('option');
+    option.value = room;
+    option.textContent = room;
+    rooms.appendChild(option);
+    rooms.value = room; // Sélectionner le nouveau salon créé
+    joinRoom(room); // Rejoindre automatiquement le nouveau salon
+});
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (input.value) {
+                var message = { user: user, emoji: emoji, color: color, text: input.value, type: 'text', room: currentRoom };
+                socket.emit('sendMessage', message);
+                input.value = '';
+            }
+        });
+
+        socket.on('receiveMessage', function(message) {
+            if (message.room === currentRoom) {
+                var item = document.createElement('li');
+                item.innerHTML = `<span style="color: ${message.color};">${message.user} ${message.emoji}</span> : ${message.text}`;
+                document.getElementById('messages').appendChild(item);
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        });
+
+        imageButton.addEventListener('click', function() {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', function() {
+            var file = imageInput.files[0];
+            var formData = new FormData();
+            formData.append('image', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    var message = { user: user, emoji: emoji, color: color, text: data.url, type: 'image', room: currentRoom };
+                    socket.emit('sendImage', message);
+                }
+            });
+        });
+
+        socket.on('receiveImage', function(message) {
+            if (message.room === currentRoom) {
+                var item = document.createElement('li');
+                item.innerHTML = `<span style="color: ${message.color};">${message.user} ${message.emoji}</span> : <img src="${message.text}" style="max-width: 200px;">`;
+                document.getElementById('messages').appendChild(item);
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        });
+
+        emojiButton.addEventListener('click', function() {
+            emojiContainer.style.display = emojiContainer.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Initialiser les émojis (simplifié)
+        var emojis = ['😀', '😂', '😍', '😎', '😢'];
+        emojis.forEach(function(emoji) {
+            var emojiElement = document.createElement('span');
+            emojiElement.textContent = emoji;
+            emojiElement.style.cursor = 'pointer';
+            emojiElement.style.padding = '5px';
+            emojiContainer.appendChild(emojiElement);
+
+            emojiElement.addEventListener('click', function() {
+                input.value += emoji;
+                emojiContainer.style.display = 'none';
+            });
+        });
+
+        recordButton.addEventListener('click', function() {
+            // Logic for recording voice message will go here
+        });
+
+        profileButton.addEventListener('click', function() {
+            profileInput.click();
+        });
+
+        profileInput.addEventListener('change', function() {
+            var file = profileInput.files[0];
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                socket.emit('changeProfilePicture', { user: user, profileEmoji: e.target.result });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        colorPicker.addEventListener('input', function() {
+            color = colorPicker.value;
+            localStorage.setItem('userColor', color);
+        });
+
+        themeToggle.addEventListener('click', function() {
+            document.body.classList.toggle('dark-mode');
+            themeToggle.textContent = document.body.classList.contains('dark-mode') ? 'Mode Clair' : 'Mode Sombre';
+        });
+
+        gifButton.addEventListener('click', function() {
+            gifSearch.style.display = gifSearch.style.display === 'none' ? 'block' : 'none';
+        });
+
+        gifSearch.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var query = gifSearch.value.trim();
+                if (query) {
+                    fetch(`https://api.giphy.com/v1/gifs/search?api_key=YOUR_API_KEY&q=${query}&limit=1`)
+                        .then(response => response.json())
+                        .then(data => {
+                            var gifUrl = data.data[0]?.images?.fixed_height?.url;
+                            if (gifUrl) {
+                                var message = { user: user, emoji: emoji, color: color, text: gifUrl, type: 'gif', room: currentRoom };
+                                socket.emit('sendGif', message);
+                            } else {
+                                alert('Aucun GIF trouvé');
+                            }
+                        });
+                }
+            }
+        });
+
+        socket.on('receiveGif', function(message) {
+            if (message.room === currentRoom) {
+                var item = document.createElement('li');
+                item.innerHTML = `<span style="color: ${message.color};">${message.user} ${message.emoji}</span> : <img src="${message.text}" style="max-width: 200px;">`;
+                document.getElementById('messages').appendChild(item);
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        });
+
+        privateMessageButton.addEventListener('click', function() {
+            var privateUser = privateMessageUser.value.trim();
+            var messageText = input.value.trim();
+            if (privateUser && messageText) {
+                var message = { user: user, emoji: emoji, color: color, text: messageText, type: 'private', to: privateUser };
+                socket.emit('sendPrivateMessage', message);
+                input.value = '';
+            }
+        });
+
+        socket.on('receivePrivateMessage', function(message) {
+            alert(`Message privé de ${message.user} : ${message.text}`);
+        });
+
+        socket.on('userProfileChanged', function(user) {
+            if (user.user === localStorage.getItem('username')) {
+                localStorage.setItem('profileEmoji', user.profileEmoji);
+            }
+        });
+
+    </script>
+</body>
+</html>

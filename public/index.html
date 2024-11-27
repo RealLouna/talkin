@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion - Talkin'</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="login-container">
+        <h2>Connexion à Talkin'</h2>
+        <form id="login-form">
+            <label for="username">Nom d'utilisateur :</label>
+            <input type="text" id="username" required>
+            <label for="password">Mot de passe :</label>
+            <input type="password" id="password" required>
+            <button type="submit">Se connecter</button>
+        </form>
+        <a href="/register.html">S'inscrire</a>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io();
+
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var username = document.getElementById('username').value;
+            var password = document.getElementById('password').value;
+            socket.emit('login', username, password);
+        });
+
+        socket.on('loginSuccess', function(user) {
+            localStorage.setItem('username', user.username);
+            localStorage.setItem('profileEmoji', user.profileEmoji || '🙂'); // Default emoji
+            window.location.href = '/chat.html';
+        });
+
+        socket.on('loginFailed', function(message) {
+            alert(message);
+        });
+    </script>
+</body>
+</html>
